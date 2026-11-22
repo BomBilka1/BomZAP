@@ -11,6 +11,7 @@ $targets = @(
 $oldService = $null
 $oldRunning = $false
 $serviceTouched = $false
+$createdService = $false
 $installed = $false
 $testProcess = $null
 
@@ -160,6 +161,7 @@ try {
         if ($result.ReturnValue -ne 0) { throw "Service configuration failed: $($result.ReturnValue)" }
     } else {
         New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName 'zapret' -StartupType Automatic | Out-Null
+        $createdService = $true
     }
     Start-Service -Name $serviceName -ErrorAction Stop
     Wait-ServiceState $serviceName 'Running'
@@ -183,7 +185,7 @@ try {
                     if ($result.ReturnValue -ne 0) { throw "Restore configuration failed: $($result.ReturnValue)" }
                     if ($oldRunning) { Start-Service -Name $serviceName; Wait-ServiceState $serviceName 'Running' }
                 }
-            } elseif ($current) {
+            } elseif ($createdService -and $current) {
                 if ($current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
                 $result = Invoke-CimMethod -InputObject (Get-ServiceInfo) -MethodName Delete
                 if ($result.ReturnValue -ne 0) { throw "Remove new service failed: $($result.ReturnValue)" }
