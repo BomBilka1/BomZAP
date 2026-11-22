@@ -163,7 +163,8 @@ try {
     }
     Start-Service -Name $serviceName -ErrorAction Stop
     Wait-ServiceState $serviceName 'Running'
-    New-ItemProperty -LiteralPath 'HKLM:\System\CurrentControlSet\Services\zapret' -Name 'zapret-discord-youtube' -Value ([IO.Path]::GetFileNameWithoutExtension($best.Name)) -PropertyType String -Force | Out-Null
+    $serviceLabel = 'AUTO + PERSONAL: ' + [IO.Path]::GetFileNameWithoutExtension($best.Name)
+    New-ItemProperty -LiteralPath 'HKLM:\System\CurrentControlSet\Services\zapret' -Name 'zapret-discord-youtube' -Value $serviceLabel -PropertyType String -Force | Out-Null
     $installed = $true
     Write-Host "Installed and started: $($best.Name)" -ForegroundColor Green
     Write-Host 'Check Valorant login and in-game ping, and Discord voice manually.' -ForegroundColor Yellow
