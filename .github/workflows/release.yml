@@ -40,7 +40,7 @@ jobs:
           cp -r lists "$NAME/"
           cp -r utils "$NAME/"
           cp *.bat "$NAME/"
-          cp BomZAP.ico Create-BomZAP-Shortcut.ps1 VALORANT-TEST.md "$NAME/"
+          cp BomZAP.ico Create-BomZAP-Shortcut.ps1 VALORANT-TEST.md PROVERKA.md "$NAME/"
 
       - name: Create archives
         run: |
