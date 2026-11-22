@@ -1,0 +1,17 @@
+name: BomZAP Windows verification
+on:
+  push:
+    paths:
+      - 'utils/BomZAP-auto.ps1'
+      - 'tests/check-auto.ps1'
+      - '.github/workflows/bomzap-verify.yml'
+      - 'general*.bat'
+  workflow_dispatch:
+jobs:
+  parse-and-check-strategies:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Windows PowerShell syntax and strategy conversion
+        shell: powershell
+        run: ./tests/check-auto.ps1
