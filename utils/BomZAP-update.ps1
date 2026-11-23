@@ -101,6 +101,8 @@ try {
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $stage,$backup | Out-Null
+    # Resolve short Windows paths (for example RUNNER~1) before deriving relative names.
+    $stage = (Get-Item -LiteralPath $stage).FullName
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($zipPath)
     try {
