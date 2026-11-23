@@ -7,6 +7,8 @@ on:
       - 'tests/check-update.ps1'
       - 'tests/integration-update.ps1'
       - 'tests/check-auto.ps1'
+      - 'tests/check-google-doh.ps1'
+      - 'tools/BomZAP-Google-DoH.ps1'
       - '.github/workflows/bomzap-verify.yml'
       - 'general*.bat'
   workflow_dispatch:
@@ -24,3 +26,6 @@ jobs:
       - name: Simulate update and preserve settings
         shell: powershell
         run: ./tests/integration-update.ps1
+      - name: Check Google DoH configuration and restore
+        shell: powershell
+        run: ./tests/check-google-doh.ps1
