@@ -8,6 +8,7 @@ $journalPath = Join-Path $work 'journal.json'
 $backup = Join-Path $work 'backup'
 $stage = Join-Path $work 'stage'
 $serviceName = 'zapret'
+$updateLock = $null
 
 function Ensure-Admin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -74,6 +75,7 @@ function Is-Protected($relative) {
 try {
     Ensure-Admin
     New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $updateLock = [IO.File]::Open((Join-Path $work 'update.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     if (Test-Path -LiteralPath $journalPath) {
         $pending = Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json
         Restore-Update $pending
@@ -182,5 +184,8 @@ try {
     }
 } catch {
     Write-Host "UPDATE ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    try { Add-Content -LiteralPath (Join-Path $work 'errors.log') -Value ((Get-Date -Format o) + ' ' + $_.Exception.Message) -Encoding UTF8 } catch { }
     exit 1
+} finally {
+    if ($updateLock) { $updateLock.Dispose() }
 }
