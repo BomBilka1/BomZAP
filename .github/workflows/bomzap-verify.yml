@@ -5,6 +5,7 @@ on:
       - 'utils/BomZAP-auto.ps1'
       - 'utils/BomZAP-update.ps1'
       - 'tests/check-update.ps1'
+      - 'tests/integration-update.ps1'
       - 'tests/check-auto.ps1'
       - '.github/workflows/bomzap-verify.yml'
       - 'general*.bat'
@@ -20,3 +21,6 @@ jobs:
       - name: Check updater syntax, protected files and rollback
         shell: powershell
         run: ./tests/check-update.ps1
+      - name: Simulate update and preserve settings
+        shell: powershell
+        run: ./tests/integration-update.ps1
