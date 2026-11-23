@@ -37,7 +37,8 @@ public class BomZapTestService : ServiceBase {
     [IO.Compression.ZipFile]::CreateFromDirectory($pack,$fixtureZip)
     $digest = (Get-FileHash $fixtureZip -Algorithm SHA256).Hash.ToLowerInvariant()
     $env:ProgramData = Join-Path $tempRoot 'programdata'
-    function Invoke-RestMethod { param($Uri,$Headers,$TimeoutSec) [PSCustomObject]@{draft=$false;prerelease=$false;tag_name='v1.1.0';assets=@([PSCustomObject]@{name='BomZAP-v1.1.0.zip';digest=('sha256:'+$digest);browser_download_url='https://github.com/BomBilka1/BomZAP/releases/download/v1.1.0/BomZAP-v1.1.0.zip'})} }
+    $releaseVersion = '1.1.0'
+    function Invoke-RestMethod { param($Uri,$Headers,$TimeoutSec) [PSCustomObject]@{draft=$false;prerelease=$false;tag_name=('v'+$releaseVersion);assets=@([PSCustomObject]@{name=('BomZAP-v'+$releaseVersion+'.zip');digest=('sha256:'+$digest);browser_download_url=('https://github.com/BomBilka1/BomZAP/releases/download/v'+$releaseVersion+'/BomZAP-v'+$releaseVersion+'.zip')})} }
     function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing,$TimeoutSec) Copy-Item $fixtureZip $OutFile }
     $global:LASTEXITCODE = 0
     & (Join-Path $install 'utils\BomZAP-update.ps1')
@@ -53,6 +54,30 @@ public class BomZapTestService : ServiceBase {
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Registration failed.' }
     $task = Get-ScheduledTask -TaskName 'BomZAP Auto Update' -ErrorAction Stop
     if ($task.Actions.Arguments -notmatch 'BomZAP-update\.ps1') { throw 'Scheduled updater points to the wrong file.' }
+    # Inject a failure after a newer release starts copying files. The old
+    # version and the running service must be restored.
+    [IO.File]::WriteAllText((Join-Path $source '.bomzap-version'), '1.2.0')
+    [IO.File]::WriteAllText((Join-Path $source 'service.bat'), 'new version of service')
+    Remove-Item $fixtureZip
+    [IO.Compression.ZipFile]::CreateFromDirectory($pack,$fixtureZip)
+    $digest = (Get-FileHash $fixtureZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $releaseVersion = '1.2.0'
+    $global:BomZapInjectFailure = $true
+    function Copy-Item {
+        param([Parameter(Position=0)]$LiteralPath,[Parameter(Position=1)]$Destination,[switch]$Force)
+        if ($global:BomZapInjectFailure -and $LiteralPath -match '\\stage\\service\.bat$') {
+            $global:BomZapInjectFailure = $false
+            throw 'Simulated copy failure'
+        }
+        Microsoft.PowerShell.Management\Copy-Item @PSBoundParameters
+    }
+    $global:LASTEXITCODE = 0
+    & (Join-Path $install 'utils\BomZAP-update.ps1')
+    if ($global:LASTEXITCODE -ne 1 -or $global:BomZapInjectFailure) { throw 'Injected failure was not detected.' }
+    $global:LASTEXITCODE = 0
+    if ((Get-Content (Join-Path $install '.bomzap-version') -Raw).Trim() -ne '1.1.0') { throw 'Previous version was not restored.' }
+    if ((Get-Service 'zapret').Status -ne 'Running') { throw 'Previous service was not restarted after failure.' }
+    if (Test-Path (Join-Path $env:ProgramData 'BomZAP\update\journal.json')) { throw 'Journal remains after rollback.' }
     Write-Host 'Simulated update, version check, settings and personal list passed.'
 } finally {
     if ($createdService) {
