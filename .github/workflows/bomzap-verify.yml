@@ -9,6 +9,8 @@ on:
       - 'tests/check-auto.ps1'
       - 'tests/check-google-doh.ps1'
       - 'tools/BomZAP-Google-DoH.ps1'
+      - 'tools/BomZAP-DNS-Win10.ps1'
+      - 'tests/check-dns-win10.ps1'
       - '.github/workflows/bomzap-verify.yml'
       - 'general*.bat'
   workflow_dispatch:
@@ -29,3 +31,6 @@ jobs:
       - name: Check Google DoH configuration and restore
         shell: powershell
         run: ./tests/check-google-doh.ps1
+      - name: Check Windows DNS proxy installation and restore
+        shell: powershell
+        run: ./tests/check-dns-win10.ps1
