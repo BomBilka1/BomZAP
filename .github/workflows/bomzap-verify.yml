@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - 'utils/BomZAP-auto.ps1'
+      - 'utils/BomZAP-update.ps1'
+      - 'tests/check-update.ps1'
       - 'tests/check-auto.ps1'
       - '.github/workflows/bomzap-verify.yml'
       - 'general*.bat'
@@ -15,3 +17,6 @@ jobs:
       - name: Check Windows PowerShell syntax and strategy conversion
         shell: powershell
         run: ./tests/check-auto.ps1
+      - name: Check updater syntax, protected files and rollback
+        shell: powershell
+        run: ./tests/check-update.ps1
