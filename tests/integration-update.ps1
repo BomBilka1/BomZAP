@@ -30,5 +30,13 @@ try {
     if ('my.example' -notin $personal -or 'riotgames.com' -notin $personal) { throw 'Personal list was not merged.' }
     if ((Get-Content (Join-Path $install 'lists\ipset-all.txt') -Raw) -notmatch '203.0.113.113') { throw 'IPSet setting changed.' }
     if (Test-Path (Join-Path $env:ProgramData 'BomZAP\update\journal.json')) { throw 'Journal remains after success.' }
+    & (Join-Path $install 'utils\BomZAP-update.ps1') -Register
+    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Registration failed.' }
+    $task = Get-ScheduledTask -TaskName 'BomZAP Auto Update' -ErrorAction Stop
+    if ($task.Actions.Arguments -notmatch 'BomZAP-update\.ps1') { throw 'Scheduled updater points to the wrong file.' }
     Write-Host 'Simulated update, version check, settings and personal list passed.'
-} finally { $env:ProgramData=$oldProgramData; Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
+} finally {
+    Unregister-ScheduledTask -TaskName 'BomZAP Auto Update' -Confirm:$false -ErrorAction SilentlyContinue
+    $env:ProgramData=$oldProgramData
+    Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
