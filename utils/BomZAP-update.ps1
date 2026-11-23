@@ -19,7 +19,12 @@ function Get-OwnService {
     $s = Get-CimInstance Win32_Service -Filter "Name='zapret'" -ErrorAction Stop
     if ($s) {
         $exe = Join-Path $root 'bin\winws.exe'
-        if (-not ($s.PathName.StartsWith('"' + $exe + '"', [StringComparison]::OrdinalIgnoreCase))) {
+        if ($s.PathName -notmatch '^"([^"]+)"(?:\s|$)') {
+            throw 'The zapret service has an unsupported executable path.'
+        }
+        $serviceExe = (Get-Item -LiteralPath $matches[1] -ErrorAction Stop).FullName
+        $expectedExe = (Get-Item -LiteralPath $exe -ErrorAction Stop).FullName
+        if (-not $serviceExe.Equals($expectedExe, [StringComparison]::OrdinalIgnoreCase)) {
             throw 'The zapret service belongs to another folder. Update that installation instead.'
         }
     }
@@ -32,8 +37,8 @@ function Stop-OwnService {
     $s = Get-OwnService
     if ($s -and $s.State -eq 'Running') { Stop-Service $serviceName; Wait-ServiceStatus 'Stopped' }
     elseif ($s -and $s.State -ne 'Stopped') { throw 'The service is changing state. Try again later.' }
-    $ownExe = Join-Path $root 'bin\winws.exe'
-    $running = @(Get-CimInstance Win32_Process -Filter "Name='winws.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.Equals($ownExe,[StringComparison]::OrdinalIgnoreCase) })
+    $ownExe = (Get-Item -LiteralPath (Join-Path $root 'bin\winws.exe')).FullName
+    $running = @(Get-CimInstance Win32_Process -Filter "Name='winws.exe'" | Where-Object { $_.ExecutablePath -and (Get-Item -LiteralPath $_.ExecutablePath -ErrorAction SilentlyContinue).FullName -eq $ownExe })
     if ($running.Count -gt 0) { throw 'A manually started winws.exe is running. Stop it before updating.' }
 }
 function Restore-Update($journal) {
