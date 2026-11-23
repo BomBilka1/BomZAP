@@ -27,7 +27,8 @@ try {
     }
     if ($Restore) {
         if (-not (Test-Path -LiteralPath $backupFile)) { throw 'No backup found on this computer.' }
-        $snapshot = @(Get-Content -LiteralPath $backupFile -Raw | ConvertFrom-Json)
+        $parsed = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($backupFile))
+        $snapshot = @($parsed | ForEach-Object { $_ })
         if ($snapshot.Count -ne 2 -or @($snapshot | Where-Object { $_.Address -notin $servers }).Count -ne 0) { throw 'Invalid backup; no settings changed.' }
         Restore-Settings $snapshot
         Remove-Item -LiteralPath $backupFile -Force
@@ -56,16 +57,18 @@ try {
         catch { throw "Setup failed: $message. Restore also failed: $($_.Exception.Message). Backup: $backupFile" }
         throw "Setup failed; previous DoH settings restored: $message"
     }
-    Clear-DnsClientCache
+    try { Clear-DnsClientCache } catch { Write-Warning 'Could not clear the DNS cache.' }
     Write-Host 'Encrypted DNS configured for Google IPv4 DNS (8.8.8.8 and 8.8.4.4).' -ForegroundColor Green
     Write-Host 'The script did not change adapter DNS addresses or IPv6 settings.'
     Write-Host 'Active adapters and their DNS servers:'
-    Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object {
-        $adapter = $_
-        Get-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex | ForEach-Object {
-            Write-Host ("  {0} / {1}: {2}" -f $adapter.Name, $_.AddressFamily, ($_.ServerAddresses -join ', '))
+    try {
+        Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object {
+            $adapter = $_
+            Get-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ErrorAction SilentlyContinue | ForEach-Object {
+                Write-Host ("  {0} / {1}: {2}" -f $adapter.Name, $_.AddressFamily, ($_.ServerAddresses -join ', '))
+            }
         }
-    }
+    } catch { Write-Warning 'Could not display adapter DNS settings.' }
     Write-Host 'Other DNS servers or adapters may still be used. Test with:'
     Write-Host '  curl.exe -4 -I --max-time 15 https://www.youtube.com/'
     Write-Host "To restore Google DoH settings, run this script with -Restore. Backup: $backupFile"
