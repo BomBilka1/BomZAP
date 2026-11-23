@@ -3,7 +3,9 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $tempRoot = Join-Path $env:TEMP ('bomzap-integration-' + [guid]::NewGuid().ToString('N'))
 $install = Join-Path $tempRoot 'installed'; $pack = Join-Path $tempRoot 'pack'; $source = Join-Path $pack 'BomZAP'
 $oldProgramData = $env:ProgramData
+$createdService = $false
 try {
+    if (Get-Service -Name 'zapret' -ErrorAction SilentlyContinue) { throw 'Test runner already has a zapret service.' }
     foreach ($dir in @($install, (Join-Path $install 'utils'), (Join-Path $install 'lists'), (Join-Path $install 'bin'), (Join-Path $source 'utils'), (Join-Path $source 'lists'), (Join-Path $source 'bin'))) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     Copy-Item (Join-Path $repositoryRoot 'utils\BomZAP-update.ps1') (Join-Path $install 'utils\BomZAP-update.ps1')
     Copy-Item (Join-Path $repositoryRoot 'utils\BomZAP-update.ps1') (Join-Path $source 'utils\BomZAP-update.ps1')
@@ -13,7 +15,22 @@ try {
     [IO.File]::WriteAllText((Join-Path $source '.bomzap-version'), '1.1.0')
     [IO.File]::WriteAllText((Join-Path $source 'lists\list-bomzap-personal.txt'), "riotgames.com`r`n")
     [IO.File]::WriteAllText((Join-Path $source 'lists\ipset-all.txt'), "SHOULD-NOT-REPLACE`r`n")
-    [IO.File]::WriteAllText((Join-Path $source 'bin\winws.exe'), 'dummy executable')
+    $serviceSource = @'
+using System.ServiceProcess;
+public class BomZapTestService : ServiceBase {
+    protected override void OnStart(string[] args) { }
+    protected override void OnStop() { }
+    public static void Main() { Run(new BomZapTestService()); }
+}
+'@
+    $oldExe = Join-Path $install 'bin\winws.exe'
+    $newExe = Join-Path $source 'bin\winws.exe'
+    Add-Type -TypeDefinition ($serviceSource.Replace('BomZapTestService','BomZapTestOld')) -ReferencedAssemblies 'System.ServiceProcess.dll' -OutputAssembly $oldExe -OutputType ConsoleApplication
+    Add-Type -TypeDefinition ($serviceSource.Replace('BomZapTestService','BomZapTestNew')) -ReferencedAssemblies 'System.ServiceProcess.dll' -OutputAssembly $newExe -OutputType ConsoleApplication
+    New-Service -Name 'zapret' -BinaryPathName ('"' + $oldExe + '"') -StartupType Manual | Out-Null
+    $createdService = $true
+    Start-Service 'zapret'
+    (Get-Service 'zapret').WaitForStatus('Running',[TimeSpan]::FromSeconds(20))
     [IO.File]::WriteAllText((Join-Path $source 'service.bat'), 'dummy service')
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $fixtureZip = Join-Path $tempRoot 'fixture.zip'
@@ -29,6 +46,8 @@ try {
     $personal = Get-Content (Join-Path $install 'lists\list-bomzap-personal.txt')
     if ('my.example' -notin $personal -or 'riotgames.com' -notin $personal) { throw 'Personal list was not merged.' }
     if ((Get-Content (Join-Path $install 'lists\ipset-all.txt') -Raw) -notmatch '203.0.113.113') { throw 'IPSet setting changed.' }
+    if ((Get-Service 'zapret').Status -ne 'Running') { throw 'Service was not restarted.' }
+    if ((Get-FileHash $oldExe -Algorithm SHA256).Hash -ne (Get-FileHash $newExe -Algorithm SHA256).Hash) { throw 'Service binary was not updated.' }
     if (Test-Path (Join-Path $env:ProgramData 'BomZAP\update\journal.json')) { throw 'Journal remains after success.' }
     & (Join-Path $install 'utils\BomZAP-update.ps1') -Register
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Registration failed.' }
@@ -36,6 +55,10 @@ try {
     if ($task.Actions.Arguments -notmatch 'BomZAP-update\.ps1') { throw 'Scheduled updater points to the wrong file.' }
     Write-Host 'Simulated update, version check, settings and personal list passed.'
 } finally {
+    if ($createdService) {
+        Stop-Service -Name 'zapret' -Force -ErrorAction SilentlyContinue
+        & sc.exe delete zapret | Out-Null
+    }
     Unregister-ScheduledTask -TaskName 'BomZAP Auto Update' -Confirm:$false -ErrorAction SilentlyContinue
     $env:ProgramData=$oldProgramData
     Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

@@ -8,19 +8,8 @@ if "%~1"=="status_zapret" (
     exit /b
 )
 
-if "%~1"=="check_updates" (
-    if defined NO_UPDATE_CHECK exit /b
-
-    if exist "%~dp0utils\check_updates.enabled" (
-        if not "%~2"=="soft" (
-            start /b service check_updates soft
-        ) else (
-            call :service_check_updates soft
-        )
-    )
-
-    exit /b
-)
+:: BomZAP updates run through the scheduled updater or the service menu.
+if "%~1"=="check_updates" exit /b
 
 if "%~1"=="load_game_filter" (
     call :game_switch_status
@@ -78,7 +67,7 @@ echo.
 echo   :: SETTINGS
 echo      4. Game Filter         [!GameFilterStatus!]
 echo      5. IPSet Filter        [!IPsetStatus!]
-echo      6. Auto-Update Check   [!CheckUpdatesStatus!]
+echo      6. Enable Auto-Updates
 echo      7. Replace active fakes
 echo.
 echo   :: UPDATES
@@ -101,7 +90,7 @@ if "%menu_choice%"=="2" goto service_remove
 if "%menu_choice%"=="3" goto service_status
 if "%menu_choice%"=="4" goto game_switch
 if "%menu_choice%"=="5" goto ipset_switch
-if "%menu_choice%"=="6" goto check_updates_switch
+if "%menu_choice%"=="6" goto enable_bomzap_updates
 if "%menu_choice%"=="7" goto replace_active_fakes
 if "%menu_choice%"=="8" goto ipset_update
 if "%menu_choice%"=="9" goto hosts_update
@@ -367,45 +356,14 @@ goto menu
 
 :: CHECK UPDATES =======================
 :service_check_updates
-chcp 437 > nul
-cls
-
-:: Set current version and URLs
-set "GITHUB_VERSION_URL=https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/version.txt"
-set "GITHUB_RELEASE_URL=https://github.com/Flowseal/zapret-discord-youtube/releases/tag/"
-set "GITHUB_DOWNLOAD_URL=https://github.com/Flowseal/zapret-discord-youtube/releases/latest"
-
-:: Get the latest version from GitHub
-for /f "delims=" %%A in ('powershell -NoProfile -Command "(Invoke-WebRequest -Uri \"%GITHUB_VERSION_URL%\" -Headers @{\"Cache-Control\"=\"no-cache\"} -UseBasicParsing -TimeoutSec 5).Content.Trim()" 2^>nul') do set "GITHUB_VERSION=%%A"
-
-:: Error handling
-if not defined GITHUB_VERSION (
-    echo Warning: failed to fetch the latest version. This warning does not affect the operation of zapret
-    timeout /T 9
-    if "%1"=="soft" exit 
-    goto menu
-)
-
-:: Version comparison
-if "%LOCAL_VERSION%"=="%GITHUB_VERSION%" (
-    echo Latest version installed: %LOCAL_VERSION%
-    
-    if "%1"=="soft" exit 
-    pause
-    goto menu
-) 
-
-echo New version available: %GITHUB_VERSION%
-echo Release page: %GITHUB_RELEASE_URL%%GITHUB_VERSION%
-
-echo Opening the download page...
-start "" "%GITHUB_DOWNLOAD_URL%"
-
-
-if "%1"=="soft" exit 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\BomZAP-update.ps1"
 pause
 goto menu
 
+:enable_bomzap_updates
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\BomZAP-update.ps1" -Register
+pause
+goto menu
 
 
 :: DIAGNOSTICS =========================
