@@ -134,7 +134,7 @@ try {
     $existing = Join-Path $root $personal
     $incoming = Join-Path $stage $personal
     if ((Test-Path $existing) -and (Test-Path $incoming)) {
-        $merged = @((Get-Content $existing) + (Get-Content $incoming) | Select-Object -Unique)
+        $merged = @(@(Get-Content $existing) + @(Get-Content $incoming) | Select-Object -Unique)
         [IO.File]::WriteAllLines($incoming,[string[]]$merged,(New-Object Text.UTF8Encoding($false)))
     }
     $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
