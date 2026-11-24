@@ -13,6 +13,7 @@ $oldRunning = $false
 $serviceTouched = $false
 $createdService = $false
 $serviceReconfigured = $false
+$oldServicePath = $null
 $installed = $false
 $testProcess = $null
 
@@ -25,6 +26,15 @@ function Require-Admin {
 }
 function Get-ServiceInfo {
     Get-CimInstance Win32_Service -Filter "Name='zapret'" -ErrorAction Stop
+}
+function Get-ServiceImagePath {
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SYSTEM\CurrentControlSet\Services\$serviceName", $false)
+    if (-not $key) { throw 'Service registry key not found.' }
+    try {
+        $path = $key.GetValue('ImagePath', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        if (-not $path -or $path -isnot [string]) { throw 'Service executable path is missing or invalid.' }
+        return $path
+    } finally { $key.Dispose() }
 }
 function Set-ServiceBinaryPath($path, $mode) {
     if (-not ('BomZap.ServiceConfig' -as [type])) {
@@ -64,12 +74,12 @@ namespace BomZap {
     $start = switch ($mode) { 'Auto' {2} 'Automatic' {2} 'Manual' {3} 'Disabled' {4} default { throw "Unsupported service start mode: $mode" } }
     [BomZap.ServiceConfig]::Set($serviceName, $path, [uint32]$start)
 }
-function Restore-OldService($old, $wasRunning, $configChanged) {
+function Restore-OldService($oldPath, $oldStartMode, $wasRunning, $configChanged) {
     $current = Get-ServiceInfo
     if (-not $current) { throw 'Previous service is missing.' }
     if ($configChanged) {
         if ($current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
-        Set-ServiceBinaryPath $old.PathName $old.StartMode
+        Set-ServiceBinaryPath $oldPath $oldStartMode
         $current = Get-ServiceInfo
     }
     if ($wasRunning -and $current.State -ne 'Running') { Start-Service -Name $serviceName; Wait-ServiceState $serviceName 'Running' }
@@ -165,6 +175,7 @@ try {
     Write-Host 'Existing zapret service will be temporarily stopped and restored on failure.'
     $oldService = Get-ServiceInfo
     if ($oldService) {
+        $oldServicePath = Get-ServiceImagePath
         $oldRunning = $oldService.State -eq 'Running'
         if ($oldService.State -notin @('Running','Stopped')) { throw 'Existing zapret service is changing state. Try again later.' }
         if ($oldRunning) {
@@ -227,7 +238,7 @@ try {
         try {
             $current = Get-ServiceInfo
             if ($oldService) {
-                Restore-OldService $oldService $oldRunning $serviceReconfigured
+                Restore-OldService $oldServicePath $oldService.StartMode $oldRunning $serviceReconfigured
             } elseif ($createdService -and $current) {
                 if ($current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
                 $result = Invoke-CimMethod -InputObject (Get-ServiceInfo) -MethodName Delete
