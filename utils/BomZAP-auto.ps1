@@ -12,6 +12,7 @@ $oldService = $null
 $oldRunning = $false
 $serviceTouched = $false
 $createdService = $false
+$serviceReconfigured = $false
 $installed = $false
 $testProcess = $null
 
@@ -24,6 +25,54 @@ function Require-Admin {
 }
 function Get-ServiceInfo {
     Get-CimInstance Win32_Service -Filter "Name='zapret'" -ErrorAction Stop
+}
+function Set-ServiceBinaryPath($path, $mode) {
+    if (-not ('BomZap.ServiceConfig' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+namespace BomZap {
+    public static class ServiceConfig {
+        [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern IntPtr OpenSCManager(string machine, string database, uint access);
+        [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern IntPtr OpenService(IntPtr manager, string service, uint access);
+        [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool ChangeServiceConfig(IntPtr service, uint type, uint start, uint error,
+            string path, string group, IntPtr tag, string dependencies, string account, string password, string display);
+        [DllImport("advapi32.dll", SetLastError=true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool CloseServiceHandle(IntPtr handle);
+        public static void Set(string name, string path, uint start) {
+            IntPtr manager = OpenSCManager(null, null, 1);
+            if (manager == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            try {
+                IntPtr service = OpenService(manager, name, 2);
+                if (service == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+                try {
+                    if (!ChangeServiceConfig(service, 0xffffffff, start, 0xffffffff, path, null,
+                        IntPtr.Zero, null, null, null, null)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                } finally { CloseServiceHandle(service); }
+            } finally { CloseServiceHandle(manager); }
+        }
+    }
+}
+'@
+    }
+    $start = switch ($mode) { 'Auto' {2} 'Automatic' {2} 'Manual' {3} 'Disabled' {4} default { throw "Unsupported service start mode: $mode" } }
+    [BomZap.ServiceConfig]::Set($serviceName, $path, [uint32]$start)
+}
+function Restore-OldService($old, $wasRunning, $configChanged) {
+    $current = Get-ServiceInfo
+    if (-not $current) { throw 'Previous service is missing.' }
+    if ($configChanged) {
+        if ($current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
+        Set-ServiceBinaryPath $old.PathName $old.StartMode
+        $current = Get-ServiceInfo
+    }
+    if ($wasRunning -and $current.State -ne 'Running') { Start-Service -Name $serviceName; Wait-ServiceState $serviceName 'Running' }
 }
 function Wait-ServiceState($name, $state) {
     $s = Get-Service -Name $name -ErrorAction Stop
@@ -157,8 +206,8 @@ try {
     $binaryPath = '"' + $bin + '" ' + $best.Args
     $serviceTouched = $true
     if ($oldService) {
-        $result = Invoke-CimMethod -InputObject $oldService -MethodName Change -Arguments @{PathName=$binaryPath; StartMode='Automatic'}
-        if ($result.ReturnValue -ne 0) { throw "Service configuration failed: $($result.ReturnValue)" }
+        Set-ServiceBinaryPath $binaryPath 'Automatic'
+        $serviceReconfigured = $true
     } else {
         New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName 'zapret' -StartupType Automatic | Out-Null
         $createdService = $true
@@ -178,13 +227,7 @@ try {
         try {
             $current = Get-ServiceInfo
             if ($oldService) {
-                if ($current -and $current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
-                if ($current) {
-                    $mode = switch ($oldService.StartMode) { 'Auto' {'Automatic'} 'Manual' {'Manual'} 'Disabled' {'Disabled'} default {$oldService.StartMode} }
-                    $result = Invoke-CimMethod -InputObject (Get-ServiceInfo) -MethodName Change -Arguments @{PathName=$oldService.PathName; StartMode=$mode}
-                    if ($result.ReturnValue -ne 0) { throw "Restore configuration failed: $($result.ReturnValue)" }
-                    if ($oldRunning) { Start-Service -Name $serviceName; Wait-ServiceState $serviceName 'Running' }
-                }
+                Restore-OldService $oldService $oldRunning $serviceReconfigured
             } elseif ($createdService -and $current) {
                 if ($current.State -eq 'Running') { Stop-Service -Name $serviceName -Force; Wait-ServiceState $serviceName 'Stopped' }
                 $result = Invoke-CimMethod -InputObject (Get-ServiceInfo) -MethodName Delete

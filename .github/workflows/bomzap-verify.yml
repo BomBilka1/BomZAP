@@ -7,6 +7,7 @@ on:
       - 'tests/check-update.ps1'
       - 'tests/integration-update.ps1'
       - 'tests/check-auto.ps1'
+      - 'tests/check-auto-service.ps1'
       - 'tests/check-google-doh.ps1'
       - 'tools/BomZAP-Google-DoH.ps1'
       - 'tools/BomZAP-DNS-Win10.ps1'
@@ -34,3 +35,6 @@ jobs:
       - name: Check Windows DNS proxy installation and restore
         shell: powershell
         run: ./tests/check-dns-win10.ps1
+      - name: Check service installation and recovery
+        shell: powershell
+        run: ./tests/check-auto-service.ps1
